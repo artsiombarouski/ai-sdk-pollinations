@@ -17,6 +17,10 @@ import {
   PollinationsImageModelId,
 } from './pollinations-image-options';
 
+// Headers to omit from fetch requests. 'user-agent' is omitted because it causes issues
+// with fetch requests on mobile devices (at least iOS).
+const HEADERS_TO_OMIT = ['user-agent'];
+
 export class PollinationsImageModel implements ImageModelV3 {
   readonly specificationVersion = 'v3';
 
@@ -339,7 +343,10 @@ export class PollinationsImageModel implements ImageModelV3 {
     const cleanHeaders: Record<string, string> = {};
     if (headers) {
       for (const [key, value] of Object.entries(headers)) {
-        if (value !== undefined) {
+        if (
+          value !== undefined &&
+          !HEADERS_TO_OMIT.includes(key.toLowerCase())
+        ) {
           cleanHeaders[key] = value;
         }
       }
