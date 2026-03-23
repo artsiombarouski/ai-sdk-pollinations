@@ -1,3 +1,5 @@
+import { InvalidPromptError, LanguageModelV3FilePart, LanguageModelV3Prompt, } from '@ai-sdk/provider';
+
 /**
  * Generate a seed value for reproducible generation.
  * Uses the provided seed, or falls back to -1 for true randomness.
@@ -103,4 +105,66 @@ export function toBase64(data: string | Uint8Array | ArrayBuffer): string {
   }
 
   return btoa(chunks.join(''));
+}
+
+/**
+ * Fetch PDF/audio `file` parts that use a `URL` so downstream APIs receive bytes
+ * (PDF as `data:application/pdf;base64,...` in `file.file_data`; audio as raw base64 in `input_audio.data`).
+ */
+export async function resolvePromptFileContent(
+  prompt: LanguageModelV3Prompt,
+  fetchImpl: typeof fetch,
+  abortSignal?: AbortSignal,
+): Promise<LanguageModelV3Prompt> {
+  const result: LanguageModelV3Prompt = [];
+
+  for (const message of prompt) {
+    if (message.role !== 'user') {
+      result.push(message);
+      continue;
+    }
+
+    const { content } = message;
+    if (!Array.isArray(content)) {
+      result.push(message);
+      continue;
+    }
+
+    const nextContent = await Promise.all(
+      content.map(async (part) => {
+        if (part.type !== 'file' || !(part.data instanceof URL)) {
+          return part;
+        }
+
+        const needsFetch =
+          part.mediaType === 'application/pdf' ||
+          part.mediaType.startsWith('audio/');
+
+        if (!needsFetch) {
+          return part;
+        }
+
+        const res = await fetchImpl(part.data.toString(), {
+          signal: abortSignal,
+        });
+
+        if (!res.ok) {
+          throw new InvalidPromptError({
+            prompt,
+            message: `Failed to fetch file from URL (${res.status}): ${part.data.toString()}`,
+          });
+        }
+
+        const buf = await res.arrayBuffer();
+        return {
+          ...part,
+          data: new Uint8Array(buf),
+        } as LanguageModelV3FilePart;
+      }),
+    );
+
+    result.push({ ...message, content: nextContent });
+  }
+
+  return result;
 }

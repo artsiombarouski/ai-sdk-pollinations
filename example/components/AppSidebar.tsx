@@ -15,6 +15,7 @@ import {
   ArrowRight,
   Clock,
   Code2,
+  FileAudio,
   FileText,
   Image as ImageIcon,
   MessageCircle,
@@ -75,6 +76,27 @@ const speechExamples = [
     label: 'Speech Generation',
     path: '/speech-generation',
     icon: Volume2,
+  },
+];
+
+const fileInputExamples = [
+  {
+    id: 'files-pdf',
+    label: 'PDF',
+    path: '/files/pdf',
+    icon: FileText,
+  },
+  {
+    id: 'files-audio',
+    label: 'Audio',
+    path: '/files/audio',
+    icon: FileAudio,
+  },
+  {
+    id: 'files-image',
+    label: 'Image',
+    path: '/files/image',
+    icon: ImageIcon,
   },
 ];
 
@@ -175,6 +197,30 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {speechExamples.map((example) => {
+                const Icon = example.icon;
+                const isActive = pathname === example.path;
+                return (
+                  <SidebarMenuItem key={example.id}>
+                    <Link
+                      href={example.path}
+                      className="[&:not(:focus-visible)]:focus:outline-none"
+                    >
+                      <SidebarMenuButton isActive={isActive}>
+                        <Icon className="size-4" />
+                        <span>{example.label}</span>
+                      </SidebarMenuButton>
+                    </Link>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup>
+          <SidebarGroupLabel>File inputs</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {fileInputExamples.map((example) => {
                 const Icon = example.icon;
                 const isActive = pathname === example.path;
                 return (
