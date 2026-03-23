@@ -339,10 +339,11 @@ export default function Chat() {
           </Suggestions>
           <div className="w-full px-4 pb-4">
             <PromptInput
-              onSubmit={handleSubmit}
+              accept="image/*,application/pdf,audio/wav,audio/x-wav,audio/mpeg,audio/mp3"
               className="mt-4"
               globalDrop
               multiple
+              onSubmit={handleSubmit}
             >
               <PromptInputHeader>
                 <PromptInputAttachments>
@@ -428,7 +429,9 @@ export default function Chat() {
                   </ModelSelector>
                 </PromptInputTools>
                 <PromptInputSubmit
-                  disabled={!input && !status}
+                  disabled={
+                    status === 'submitted' || status === 'streaming'
+                  }
                   status={status}
                 />
               </PromptInputFooter>

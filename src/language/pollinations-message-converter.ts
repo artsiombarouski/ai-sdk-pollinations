@@ -1,20 +1,27 @@
-import type {
-  LanguageModelV3CallOptions,
-  LanguageModelV3Prompt,
-  SharedV3Warning,
+import {
+  type LanguageModelV3CallOptions,
+  type LanguageModelV3Prompt,
+  type SharedV3Warning,
+  UnsupportedFunctionalityError,
 } from '@ai-sdk/provider';
-import { toBase64 } from '../pollinations-utils';
+import { convertToBase64 } from '@ai-sdk/provider-utils';
+
+/** User message content items for the Pollinations OpenAI-compatible chat API */
+export type PollinationsUserContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+  | {
+      type: 'input_audio';
+      input_audio: { data: string; format: 'wav' | 'mp3' };
+    }
+  | {
+      type: 'file';
+      file: { file_id: string } | { filename: string; file_data: string };
+    };
 
 export interface PollinationsMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
-  content:
-    | string
-    | Array<{
-        type: string;
-        text?: string;
-        image_url?: { url: string };
-      }>
-    | null;
+  content: string | PollinationsUserContentPart[];
   tool_calls?: Array<{
     id: string;
     type: 'function';
@@ -36,85 +43,116 @@ export function convertToProviderMessages(
 ): PollinationsMessage[] {
   const messages: PollinationsMessage[] = [];
 
-  for (const message of prompt) {
-    switch (message.role) {
+  for (const { role, content } of prompt) {
+    switch (role) {
       case 'system': {
-        messages.push({ role: 'system', content: message.content });
+        messages.push({ role: 'system', content: content });
         break;
       }
 
       case 'user': {
-        const userContent = Array.isArray(message.content)
-          ? message.content
-          : [{ type: 'text' as const, text: String(message.content) }];
-
         // Handle simple text-only content
-        if (userContent.length === 1 && userContent[0].type === 'text') {
+        if (content.length === 1 && content[0].type === 'text') {
           messages.push({
             role: 'user',
-            content: userContent[0].text,
+            content: content[0].text,
           });
           break;
         }
 
         // Handle multipart content
-        const userParts: Array<{
-          type: string;
-          text?: string;
-          image_url?: { url: string };
-        }> = [];
-
-        for (const part of userContent) {
-          switch (part.type) {
-            case 'text': {
-              userParts.push({ type: 'text', text: part.text });
-              break;
-            }
-            case 'file': {
-              if (part.mediaType.startsWith('image/')) {
-                const mediaType =
-                  part.mediaType === 'image/*' ? 'image/jpeg' : part.mediaType;
-
-                let imageUrl: string;
-                if (part.data instanceof URL) {
-                  imageUrl = part.data.toString();
-                } else {
-                  imageUrl = `data:${mediaType};base64,${toBase64(part.data)}`;
-                }
-
-                userParts.push({
-                  type: 'image_url',
-                  image_url: { url: imageUrl },
-                });
-              } else {
-                warnings.push({
-                  type: 'other',
-                  message: `File type ${part.mediaType} is not supported for Pollinations API`,
-                });
-              }
-              break;
-            }
-            default: {
-              warnings.push({
-                type: 'other',
-                message: `User content part type ${(part as any).type} is not supported`,
-              });
-            }
-          }
-        }
-
         messages.push({
           role: 'user',
-          content: userParts,
+          content: content.map((part, index) => {
+            switch (part.type) {
+              case 'text': {
+                return { type: 'text', text: part.text };
+              }
+              case 'file': {
+                if (part.mediaType.startsWith('image/')) {
+                  const mediaType =
+                    part.mediaType === 'image/*'
+                      ? 'image/jpeg'
+                      : part.mediaType;
+                  return {
+                    type: 'image_url',
+                    image_url: {
+                      url:
+                        part.data instanceof URL
+                          ? part.data.toString()
+                          : `data:${mediaType};base64,${convertToBase64(part.data)}`,
+                    },
+                  };
+                } else if (part.mediaType.startsWith('audio/')) {
+                  if (part.data instanceof URL) {
+                    throw new UnsupportedFunctionalityError({
+                      functionality: 'audio file parts with URLs',
+                    });
+                  }
+
+                  switch (part.mediaType) {
+                    case 'audio/wav': {
+                      return {
+                        type: 'input_audio',
+                        input_audio: {
+                          data: convertToBase64(part.data),
+                          format: 'wav',
+                        },
+                      };
+                    }
+                    case 'audio/mp3':
+                    case 'audio/mpeg': {
+                      return {
+                        type: 'input_audio',
+                        input_audio: {
+                          data: convertToBase64(part.data),
+                          format: 'mp3',
+                        },
+                      };
+                    }
+
+                    default: {
+                      throw new UnsupportedFunctionalityError({
+                        functionality: `audio content parts with media type ${part.mediaType}`,
+                      });
+                    }
+                  }
+                } else if (part.mediaType === 'application/pdf') {
+                  if (part.data instanceof URL) {
+                    throw new UnsupportedFunctionalityError({
+                      functionality: 'PDF file parts with URLs',
+                    });
+                  }
+                  return {
+                    type: 'file',
+                    file:
+                      typeof part.data === 'string' &&
+                      part.data.startsWith('file-')
+                        ? { file_id: part.data }
+                        : {
+                            filename: part.filename ?? `part-${index}.pdf`,
+                            file_data: `data:application/pdf;base64,${convertToBase64(part.data)}`,
+                          },
+                  };
+                } else {
+                  throw new UnsupportedFunctionalityError({
+                    functionality: `${part.mediaType} media type is not supported`,
+                  });
+                }
+              }
+              default: {
+                throw new UnsupportedFunctionalityError({
+                  functionality: `User content part ${part} is not supported`,
+                });
+              }
+            }
+          }),
         });
+
         break;
       }
 
       case 'assistant': {
-        const assistantContent = Array.isArray(message.content)
-          ? message.content
-          : [{ type: 'text' as const, text: String(message.content) }];
-
         let assistantText = '';
         const toolCalls: Array<{
           id: string;
@@ -122,7 +160,7 @@ export function convertToProviderMessages(
           function: { name: string; arguments: string };
         }> = [];
 
-        for (const part of assistantContent) {
+        for (const part of content) {
           switch (part.type) {
             case 'text': {
               assistantText += part.text;
@@ -160,7 +198,7 @@ export function convertToProviderMessages(
 
         const assistantMessage: PollinationsMessage = {
           role: 'assistant',
-          content: assistantText || null,
+          content: assistantText,
         };
 
         if (toolCalls.length > 0) {
@@ -172,12 +210,21 @@ export function convertToProviderMessages(
       }
 
       case 'tool': {
-        const toolContent = Array.isArray(message.content)
-          ? message.content
-          : [];
-
+        if (content.length === 0) {
+          warnings.push({
+            type: 'other',
+            message: 'Tool message has no tool results',
+          });
+          messages.push({
+            role: 'tool',
+            tool_call_id: '',
+            name: '',
+            content: JSON.stringify(content),
+          });
+          break;
+        }
         // Pollinations API expects one tool result per message
-        for (const toolResponse of toolContent) {
+        for (const toolResponse of content) {
           if (toolResponse.type === 'tool-result') {
             let contentValue: string;
             const output = toolResponse.output;
@@ -213,24 +260,11 @@ export function convertToProviderMessages(
             });
           }
         }
-
-        if (toolContent.length === 0) {
-          warnings.push({
-            type: 'other',
-            message: 'Tool message has no tool results',
-          });
-          messages.push({
-            role: 'tool',
-            tool_call_id: '',
-            name: '',
-            content: JSON.stringify(message.content),
-          });
-        }
         break;
       }
 
       default: {
-        throw new Error(`Unsupported message role: ${(message as any).role}`);
+        throw new Error(`Unsupported message role: ${role}`);
       }
     }
   }

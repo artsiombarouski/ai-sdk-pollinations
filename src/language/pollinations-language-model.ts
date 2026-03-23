@@ -13,7 +13,7 @@ import type {
   PollinationsLanguageModelSettings,
   PollinationsResponse,
 } from '../pollinations-types';
-import { resolveSeed } from '../pollinations-utils';
+import { resolvePromptFileContent, resolveSeed } from '../pollinations-utils';
 import { extractGroundingSourcesFromMetadata } from './pollinations-language-utils';
 import {
   convertToProviderMessages,
@@ -45,9 +45,14 @@ export class PollinationsLanguageModel implements LanguageModelV3 {
     this.config = config;
   }
 
-  // Supported URL patterns for native file handling
+  // Supported URL patterns for native file handling (OpenAI-compatible multimodal parts)
   readonly supportedUrls = {
     'image/*': [/^https?:\/\/.*$/],
+    'application/pdf': [/^https?:\/\/.*$/],
+    'audio/wav': [/^https?:\/\/.*$/],
+    'audio/x-wav': [/^https?:\/\/.*$/],
+    'audio/mpeg': [/^https?:\/\/.*$/],
+    'audio/mp3': [/^https?:\/\/.*$/],
   };
 
   // Convert AI SDK prompt to provider format
@@ -197,13 +202,16 @@ export class PollinationsLanguageModel implements LanguageModelV3 {
   async doGenerate(
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3GenerateResult> {
-    const { args, warnings } = this.getArgs(options);
+    const fetchFn = this.config.fetch ?? fetch;
+    const prompt = await resolvePromptFileContent(
+      options.prompt,
+      fetchFn,
+      options.abortSignal,
+    );
+    const { args, warnings } = this.getArgs({ ...options, prompt });
 
     let response: PollinationsResponse;
     let responseHeaders: Record<string, string> = {};
-
-    // Use custom fetch if provided, otherwise use global fetch
-    const fetchFn = this.config.fetch ?? fetch;
 
     try {
       const fetchResponse = await fetchFn(this.config.baseURL, {
@@ -350,7 +358,13 @@ export class PollinationsLanguageModel implements LanguageModelV3 {
   async doStream(
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3StreamResult> {
-    const { args, warnings } = this.getArgs(options);
+    const fetchFn = this.config.fetch ?? fetch;
+    const prompt = await resolvePromptFileContent(
+      options.prompt,
+      fetchFn,
+      options.abortSignal,
+    );
+    const { args, warnings } = this.getArgs({ ...options, prompt });
 
     // Add stream: true parameter for streaming responses
     const streamArgs: Record<string, unknown> = { ...args, stream: true };
@@ -363,9 +377,6 @@ export class PollinationsLanguageModel implements LanguageModelV3 {
     if (pollinationsOptions?.stream_options) {
       streamArgs.stream_options = pollinationsOptions.stream_options;
     }
-
-    // Use custom fetch if provided, otherwise use global fetch
-    const fetchFn = this.config.fetch ?? fetch;
 
     let response: Response;
     try {

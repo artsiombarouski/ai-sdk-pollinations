@@ -57,9 +57,9 @@
     "test:watch": "jest --watch"
   },
   "dependencies": {
-    "ai": "^6.0.27",
-    "@ai-sdk/provider": "^3.0.2",
-    "@ai-sdk/provider-utils": "^4.0.4"
+    "ai": "^6.0.134",
+    "@ai-sdk/provider": "^3.0.8",
+    "@ai-sdk/provider-utils": "^4.0.21"
   },
   "devDependencies": {
     "@types/jest": "^29.5.14",

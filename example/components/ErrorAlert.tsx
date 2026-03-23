@@ -13,7 +13,9 @@ export function ErrorAlert({ title = 'Error', message }: ErrorAlertProps) {
   return (
     <Alert variant="destructive">
       <AlertTitle>{title}</AlertTitle>
-      <AlertDescription>{message}</AlertDescription>
+      <AlertDescription className="overflow-hidden break-all">
+        {message}
+      </AlertDescription>
     </Alert>
   );
 }
