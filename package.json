@@ -1,6 +1,6 @@
 {
   "name": "ai-sdk-pollinations",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Pollinations AI provider for Vercel AI SDK - supporting text generation, image generation, and tool calling",
   "keywords": [
     "ai",
